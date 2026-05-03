@@ -1,74 +1,227 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pressure Monitor</title>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
-
+<meta charset="utf-8">
+<title>Pressure Monitor</title>
+<style>
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 1rem;
+    box-sizing: border-box;
+  }
+  h1 {
+    font-size: 1.1rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #58a6ff;
+    margin-bottom: 0.5rem;
+  }
+  #status {
+    font-size: 0.75rem;
+    color: #8b949e;
+    margin-bottom: 1rem;
+    letter-spacing: 0.1em;
+  }
+  #status.ok  { color: #3fb950; }
+  #status.err { color: #f85149; }
+  canvas { max-width: 400px; width: 100%; }
+  #psi-display {
+    font-size: 2.5rem;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    margin-top: -0.5rem;
+  }
+  #psi-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    color: #8b949e;
+    margin-bottom: 1rem;
+  }
+  #zone-label {
+    font-size: 0.85rem;
+    letter-spacing: 0.15em;
+    padding: 0.25rem 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+  }
+  .zone-safe    { background: rgba(63,185,80,0.15);  color: #3fb950; border: 1px solid #3fb950; }
+  .zone-warning { background: rgba(210,153,34,0.15); color: #d2991f; border: 1px solid #d2991f; }
+  .zone-danger  { background: rgba(248,81,73,0.15);  color: #f85149; border: 1px solid #f85149; }
+</style>
 </head>
-
-<body style="background:#111; color:white; text-align:center; font-family:sans-serif;">
-
+<body>
 <h1>Pressure Monitor</h1>
-
-<canvas id="gauge" width="400" height="200"></canvas>
+<div id="status">CONNECTING...</div>
+<canvas id="gauge" width="400" height="220"></canvas>
+<div id="psi-display">—</div>
+<div id="psi-label">PSI</div>
+<div id="zone-label" class="zone-safe">NOMINAL</div>
 
 <script>
-const SUPABASE_URL = "https://yuqwdavxrjnzsfzofhtx.supabase.co/rest/v1/pressure?select=psi&order=time.desc&limit=1";
+const SUPABASE_URL = "https://yuqwdavxrjnzsfzofhtx.supabase.co/rest/v1/pressure?select=psi&order=time.desc&limit=1&apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1cXdkYXZ4cmpuenNmem9maHR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MDM0MjMsImV4cCI6MjA5MzM3OTQyM30.TPf1xLQBQb2JGukbtiubTmRgHgwzbU4q3ofPGtNfQnM";
 const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1cXdkYXZ4cmpuenNmem9maHR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MDM0MjMsImV4cCI6MjA5MzM3OTQyM30.TPf1xLQBQb2JGukbtiubTmRgHgwzbU4q3ofPGtNfQnM";
 
-const ctx = document.getElementById('gauge').getContext('2d');
-
-// Fake gauge using doughnut (more reliable)
-const gauge = new Chart(ctx, {
-  type: 'doughnut',
-  data: {
-    labels: ['Safe', 'Warning', 'Danger'],
-    datasets: [{
-      data: [10, 11, 9],
-      backgroundColor: ['green', 'yellow', 'red'],
-      borderWidth: 0
-    }]
-  },
-  options: {
-    rotation: -90,
-    circumference: 180,
-    cutout: '70%',
-    plugins: {
-      legend: { display: false }
-    }
-  }
-});
-
+const MAX_PSI = 30;
 let currentPSI = 0;
+let animFrame = null;
 
-function drawNeedle(value) {
-  const angle = (value / 30) * Math.PI;
+const canvas = document.getElementById('gauge');
+const ctx = canvas.getContext('2d');
 
-  const x = 200;
-  const y = 200;
+function getColor(psi) {
+  if (psi < 10) return '#3fb950';
+  if (psi < 20) return '#d2991f';
+  return '#f85149';
+}
 
-  const ctx = gauge.ctx;
+function drawGauge(psi) {
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W / 2;
+  const cy = H - 30;
+  const r = Math.min(W, H * 2) * 0.42;
 
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle - Math.PI);
+  ctx.clearRect(0, 0, W, H);
 
+  // Background arc segments
+  const segments = [
+    { from: 0,  to: 10, color: 'rgba(63,185,80,0.18)'  },
+    { from: 10, to: 20, color: 'rgba(210,153,34,0.18)' },
+    { from: 20, to: 30, color: 'rgba(248,81,73,0.18)'  },
+  ];
+  segments.forEach(seg => {
+    const aStart = Math.PI + (seg.from / MAX_PSI) * Math.PI;
+    const aEnd   = Math.PI + (seg.to   / MAX_PSI) * Math.PI;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, aStart, aEnd);
+    ctx.arc(cx, cy, r * 0.72, aEnd, aStart, true);
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+  });
+
+  // Filled arc up to current value
+  const fillEnd = Math.PI + (Math.min(psi, MAX_PSI) / MAX_PSI) * Math.PI;
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(0, -100);
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = 'white';
+  ctx.arc(cx, cy, r, Math.PI, fillEnd);
+  ctx.arc(cx, cy, r * 0.72, fillEnd, Math.PI, true);
+  ctx.fillStyle = getColor(psi) + '55';
+  ctx.fill();
+
+  // Arc border
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, 0);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#30363d';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.72, Math.PI, 0);
   ctx.stroke();
 
+  // Tick marks + labels
+  for (let v = 0; v <= MAX_PSI; v += 5) {
+    const angle = Math.PI + (v / MAX_PSI) * Math.PI;
+    const isMajor = v % 10 === 0;
+    const inner = isMajor ? r * 0.62 : r * 0.68;
+    const outer = r * 0.74;
+    const sx = cx + Math.cos(angle) * outer;
+    const sy = cy + Math.sin(angle) * outer;
+    const ex = cx + Math.cos(angle) * inner;
+    const ey = cy + Math.sin(angle) * inner;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.lineWidth = isMajor ? 2 : 1;
+    ctx.strokeStyle = isMajor ? '#8b949e' : '#30363d';
+    ctx.stroke();
+    if (isMajor) {
+      const lx = cx + Math.cos(angle) * (r * 0.56);
+      const ly = cy + Math.sin(angle) * (r * 0.56);
+      ctx.font = `${Math.round(r * 0.14)}px 'Courier New', monospace`;
+      ctx.fillStyle = '#8b949e';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(v, lx, ly);
+    }
+  }
+
+  // Needle
+  const needleAngle = Math.PI + (Math.min(psi, MAX_PSI) / MAX_PSI) * Math.PI;
+  const nLen  = r * 0.88;
+  const nBack = r * 0.18;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(needleAngle);
+  ctx.beginPath();
+  ctx.moveTo(-nBack, 0);
+  ctx.lineTo(nLen, 0);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = getColor(psi);
+  ctx.lineCap = 'round';
+  ctx.stroke();
   ctx.restore();
 
-  ctx.font = "20px Arial";
-  ctx.fillStyle = "white";
-  ctx.fillText(value.toFixed(1) + " PSI", 160, 180);
+  // Centre pivot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+  ctx.fillStyle = '#1c2128';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#58a6ff';
+  ctx.stroke();
+
+  // Range labels
+  ctx.font = `${Math.round(r * 0.1)}px 'Courier New', monospace`;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#3fb950';
+  ctx.fillText('0', cx - r * 1.02, cy + 14);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#f85149';
+  ctx.fillText('30', cx + r * 1.02, cy + 14);
+}
+
+function animateTo(target) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  function step() {
+    const diff = target - currentPSI;
+    if (Math.abs(diff) < 0.05) {
+      currentPSI = target;
+      drawGauge(currentPSI);
+      return;
+    }
+    currentPSI += diff * 0.12;
+    drawGauge(currentPSI);
+    animFrame = requestAnimationFrame(step);
+  }
+  step();
+}
+
+function updateUI(psi) {
+  const el   = document.getElementById('psi-display');
+  const zone = document.getElementById('zone-label');
+  el.style.color = getColor(psi);
+  el.textContent = psi.toFixed(1);
+  if (psi < 10) {
+    zone.textContent = 'NOMINAL';
+    zone.className = 'zone-label zone-safe';
+  } else if (psi < 20) {
+    zone.textContent = 'WARNING';
+    zone.className = 'zone-label zone-warning';
+  } else {
+    zone.textContent = 'DANGER';
+    zone.className = 'zone-label zone-danger';
+  }
 }
 
 async function fetchPressure() {
+  const statusEl = document.getElementById('status');
   try {
     const res = await fetch(SUPABASE_URL, {
       headers: {
@@ -76,27 +229,28 @@ async function fetchPressure() {
         "Authorization": "Bearer " + API_KEY
       }
     });
-
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-
-    if (data.length > 0) {
-      currentPSI = data[0].psi;
-
-      gauge.update();
-
-      // redraw needle
-      drawNeedle(currentPSI);
+    if (Array.isArray(data) && data.length > 0) {
+      const psi = parseFloat(data[0].psi);
+      statusEl.textContent = 'LIVE · Updated ' + new Date().toLocaleTimeString();
+      statusEl.className = 'ok';
+      updateUI(psi);
+      animateTo(psi);
+    } else {
+      statusEl.textContent = 'NO DATA';
+      statusEl.className = 'err';
     }
-
   } catch (err) {
+    statusEl.textContent = 'CONNECTION ERROR';
+    statusEl.className = 'err';
     console.error(err);
   }
 }
 
-setInterval(fetchPressure, 2000);
+drawGauge(0);
 fetchPressure();
-
+setInterval(fetchPressure, 2000);
 </script>
-
 </body>
 </html>
