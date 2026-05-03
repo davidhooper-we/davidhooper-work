@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pressure Gauge</title>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Gauge plugin -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-gauge"></script>
+</head>
+
+<body style="background:#111; color:white; text-align:center; font-family:sans-serif;">
+
+<h1>Pressure Monitor</h1>
+
+<canvas id="gauge" width="300" height="300"></canvas>
+
+<script>
+// 🔧 YOUR SUPABASE INFO
+const SUPABASE_URL = "https://yuqwdavxrjnzsfzofhtx.supabase.co/rest/v1/pressure?select=psi&order=time.desc&limit=1";
+const API_KEY = "sb_publishable_ZC7GFOAFxyqqVuC4Ye5Jnw_1fSE4Qoe";
+
+// 🎯 Gauge setup
+const ctx = document.getElementById('gauge').getContext('2d');
+
+const gauge = new Chart(ctx, {
+  type: 'gauge',
+  data: {
+    datasets: [{
+      value: 0,
+      minValue: 0,
+      data: [
+        10,  // green zone
+        11,  // yellow zone (up to ~21 PSI)
+        9    // red zone (21–30 PSI)
+      ],
+      backgroundColor: [
+        'green',
+        'yellow',
+        'red'
+      ]
+    }]
+  },
+  options: {
+    responsive: true,
+
+    needle: {
+      radiusPercentage: 2,
+      widthPercentage: 3,
+      lengthPercentage: 80,
+      color: 'white'
+    },
+
+    valueLabel: {
+      display: true,
+      formatter: (value) => value.toFixed(1) + " PSI",
+      color: "white",
+      backgroundColor: "transparent"
+    }
+  }
+});
+
+// 🔄 Fetch latest PSI
+async function fetchPressure() {
+  try {
+    const res = await fetch(SUPABASE_URL, {
+      headers: {
+        "apikey": API_KEY,
+        "Authorization": "Bearer " + API_KEY
+      }
+    });
+
+    const data = await res.json();
+
+    if (data.length > 0) {
+      const psi = data[0].psi;
+
+      gauge.data.datasets[0].value = psi;
+      gauge.update();
+    }
+
+  } catch (err) {
+    console.error("Error:", err);
+  }
+}
+
+// ⏱ Update every 2 seconds
+setInterval(fetchPressure, 2000);
+fetchPressure();
+
+</script>
+
+</body>
+</html>
