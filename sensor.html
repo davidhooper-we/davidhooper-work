@@ -1,67 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pressure Gauge</title>
+  <title>Pressure Monitor</title>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
 
-  <!-- Gauge plugin -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-gauge"></script>
 </head>
 
 <body style="background:#111; color:white; text-align:center; font-family:sans-serif;">
 
 <h1>Pressure Monitor</h1>
 
-<canvas id="gauge" width="300" height="300"></canvas>
+<canvas id="gauge" width="400" height="200"></canvas>
 
 <script>
-// 🔧 YOUR SUPABASE INFO
 const SUPABASE_URL = "https://yuqwdavxrjnzsfzofhtx.supabase.co/rest/v1/pressure?select=psi&order=time.desc&limit=1";
 const API_KEY = "sb_publishable_ZC7GFOAFxyqqVuC4Ye5Jnw_1fSE4Qoe";
 
-// 🎯 Gauge setup
 const ctx = document.getElementById('gauge').getContext('2d');
 
+// Fake gauge using doughnut (more reliable)
 const gauge = new Chart(ctx, {
-  type: 'gauge',
+  type: 'doughnut',
   data: {
+    labels: ['Safe', 'Warning', 'Danger'],
     datasets: [{
-      value: 0,
-      minValue: 0,
-      data: [
-        10,  // green zone
-        11,  // yellow zone (up to ~21 PSI)
-        9    // red zone (21–30 PSI)
-      ],
-      backgroundColor: [
-        'green',
-        'yellow',
-        'red'
-      ]
+      data: [10, 11, 9],
+      backgroundColor: ['green', 'yellow', 'red'],
+      borderWidth: 0
     }]
   },
   options: {
-    responsive: true,
-
-    needle: {
-      radiusPercentage: 2,
-      widthPercentage: 3,
-      lengthPercentage: 80,
-      color: 'white'
-    },
-
-    valueLabel: {
-      display: true,
-      formatter: (value) => value.toFixed(1) + " PSI",
-      color: "white",
-      backgroundColor: "transparent"
+    rotation: -90,
+    circumference: 180,
+    cutout: '70%',
+    plugins: {
+      legend: { display: false }
     }
   }
 });
 
-// 🔄 Fetch latest PSI
+let currentPSI = 0;
+
+function drawNeedle(value) {
+  const angle = (value / 30) * Math.PI;
+
+  const x = 200;
+  const y = 200;
+
+  const ctx = gauge.ctx;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle - Math.PI);
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -100);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'white';
+  ctx.stroke();
+
+  ctx.restore();
+
+  ctx.font = "20px Arial";
+  ctx.fillStyle = "white";
+  ctx.fillText(value.toFixed(1) + " PSI", 160, 180);
+}
+
 async function fetchPressure() {
   try {
     const res = await fetch(SUPABASE_URL, {
@@ -74,18 +80,19 @@ async function fetchPressure() {
     const data = await res.json();
 
     if (data.length > 0) {
-      const psi = data[0].psi;
+      currentPSI = data[0].psi;
 
-      gauge.data.datasets[0].value = psi;
       gauge.update();
+
+      // redraw needle
+      drawNeedle(currentPSI);
     }
 
   } catch (err) {
-    console.error("Error:", err);
+    console.error(err);
   }
 }
 
-// ⏱ Update every 2 seconds
 setInterval(fetchPressure, 2000);
 fetchPressure();
 
