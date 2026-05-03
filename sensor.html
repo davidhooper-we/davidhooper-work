@@ -77,9 +77,8 @@ const canvas = document.getElementById('gauge');
 const ctx = canvas.getContext('2d');
 
 function getColor(psi) {
-  if (psi < 10) return '#3fb950';
-  if (psi < 20) return '#d2991f';
-  return '#f85149';
+  if (psi < 21) return '#3fb950';
+  return '#d2991f';
 }
 
 function drawGauge(psi) {
@@ -93,9 +92,8 @@ function drawGauge(psi) {
 
   // Background arc segments
   const segments = [
-    { from: 0,  to: 10, color: 'rgba(63,185,80,0.18)'  },
-    { from: 10, to: 20, color: 'rgba(210,153,34,0.18)' },
-    { from: 20, to: 30, color: 'rgba(248,81,73,0.18)'  },
+    { from: 0,  to: 21, color: 'rgba(63,185,80,0.18)'  },
+    { from: 21, to: 30, color: 'rgba(210,153,34,0.18)' },
   ];
   segments.forEach(seg => {
     const aStart = Math.PI + (seg.from / MAX_PSI) * Math.PI;
@@ -208,15 +206,12 @@ function updateUI(psi) {
   const zone = document.getElementById('zone-label');
   el.style.color = getColor(psi);
   el.textContent = psi.toFixed(1);
-  if (psi < 10) {
+  if (psi < 21) {
     zone.textContent = 'NOMINAL';
     zone.className = 'zone-label zone-safe';
-  } else if (psi < 20) {
-    zone.textContent = 'WARNING';
-    zone.className = 'zone-label zone-warning';
   } else {
-    zone.textContent = 'DANGER';
-    zone.className = 'zone-label zone-danger';
+    zone.textContent = 'HIGH PRESSURE';
+    zone.className = 'zone-label zone-warning';
   }
 }
 
